@@ -295,6 +295,9 @@ footer a:hover{color:var(--white)}
 .msg.bot{background:var(--white);border:1px solid var(--line);border-bottom-left-radius:2px;align-self:flex-start}
 .msg.user{background:var(--navy);color:var(--white);border-bottom-right-radius:2px;align-self:flex-end}
 .msg.bot b{color:var(--navy)}
+.online-pill{align-self:center;display:inline-flex;align-items:center;gap:8px;background:var(--white);border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:.74rem;font-weight:600;color:var(--navy);animation:fadeUp .3s}
+.online-pill i{width:10px;height:10px;border-radius:50%;background:var(--ok);position:relative;flex:none}
+.online-pill i::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--ok);animation:ring 1.8s ease-out infinite}
 .typing{align-self:flex-start;background:var(--white);border:1px solid var(--line);border-radius:10px;padding:11px 14px;display:flex;gap:4px}
 .typing i{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:blink 1.2s infinite}
 .typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
@@ -896,9 +899,11 @@ $('#fEdit').onclick=()=>{$('#fOk').hidden=true;$('#fSteps').hidden=false;show(2)
 
 // ---------- Atendente virtual ----------
 const chat=$('#chat'),body=$('#chatBody'),agentBtn=$('#agentBtn'),teaser=$('#teaser');
-let started=false,userOpened=false,ctx={area:''};
+let started=false,userOpened=false,ctx={area:'',nome:'',wantName:false,pending:null,greeted:false};
+const capName=s=>s.trim().split(/\s+/)[0].toLowerCase().replace(/^\p{L}/u,c=>c.toUpperCase()).slice(0,30);
+const N=()=>esc(ctx.nome||'');
 const K={
- start:{t:'Olá! Eu sou a <b>Júlia</b>, atendente virtual do escritório da Dra. Laydy Ribeiro. Em que área posso te ajudar?',o:[['Criminal','criminal'],['Cível','civel'],['Trabalhista','trabalhista'],['Previdenciário (INSS)','previdenciario'],['Calcular rescisão trabalhista','calc'],['Agendar atendimento','agendar'],['Dúvidas sobre o atendimento','geral']]},
+ start:{t:'Prazer, {nome}! Em que área posso te ajudar?',o:[['Criminal','criminal'],['Cível','civel'],['Trabalhista','trabalhista'],['Previdenciário (INSS)','previdenciario'],['Calcular rescisão trabalhista','calc'],['Agendar atendimento','agendar'],['Dúvidas sobre o atendimento','geral']]},
  criminal:{a:'Criminal',t:'Na área <b>Criminal</b>, a Dra. Laydy atua desde a delegacia até o julgamento. Qual é a sua situação?',o:[['Fui intimado(a) a depor','cr_intim'],['Alguém da família foi preso','cr_preso'],['Já respondo a processo','cr_proc'],['Preciso de medida protetiva','cr_mp'],['Voltar ao início','start']]},
  cr_intim:{t:'Você tem direito a ser acompanhado(a) por advogado(a) e de permanecer em silêncio. O ideal é <b>conversar com a Dra. antes da data marcada</b>.',o:[['Falar com a Dra. agora','wa'],['Preencher formulário','form'],['Outra dúvida','start']]},
  cr_preso:{t:'Em caso de prisão, <b>o tempo é decisivo</b>. A pessoa presa tem direito a advogado(a) e passa por audiência de custódia. Separe o nome completo, o local onde está e o motivo informado.',o:[['Falar com urgência','wa'],['Outra dúvida','start']]},
@@ -940,20 +945,27 @@ function go(key){
   if(key==='calc'){ctx.area='Trabalhista';startCalc();return}
   if(key==='form'){toggleChat(false);if(ctx.area){const r=form.querySelector('input[name=area][value="'+ctx.area+'"]');if(r){r.checked=true;setArea(r.value)}}$('#atendimento').scrollIntoView({behavior:'smooth'});return}
   const n=K[key];if(!n)return;if(n.a)ctx.area=n.a;
-  typing(()=>{addMsg(n.t,'bot');renderOpts(n.o)},600+Math.min(n.t.length*5,800));
+  let t=n.t;
+  if(key==='start'){t=ctx.greeted?'{nome}, em que mais posso te ajudar?':t;ctx.greeted=true}
+  else if(key.includes('_')&&ctx.nome){t='{nome}, '+t.charAt(0).toLowerCase()+t.slice(1)}
+  else if(n.a&&ctx.nome){t=t.replace('Na área','{nome}, na área')}
+  t=ctx.nome?t.split('{nome}').join('<b>'+N()+'</b>'):t.replace('Prazer, {nome}! ','').replace('{nome}, em','Em');
+  typing(()=>{addMsg(t,'bot');renderOpts(n.o)},600+Math.min(t.length*5,800));
 }
 function renderOpts(list){const w=document.createElement('div');w.className='opts';
   list.forEach(([label,key])=>{let b;
     if(key==='wa'){b=document.createElement('a');b.className='opt wa';b.target='_blank';b.rel='noopener';
-      b.href=wa(LAWYER,'Olá, Dra. Laydy! Vim pela atendente virtual do site e gostaria de atendimento'+(ctx.area?' na área '+ctx.area:'')+'.');
-      b.textContent=label;b.onclick=()=>{clearOpts();addMsg(label,'user');typing(()=>{addMsg('Pronto! O WhatsApp da Dra. Laydy foi aberto. É só enviar a mensagem por lá.','bot');renderOpts([['Voltar ao início','start']])},500)}}
+      b.href=wa(LAWYER,'Olá, Dra. Laydy! '+(ctx.nome?'Meu nome é '+ctx.nome+'. ':'')+'Vim pela atendente virtual do site e gostaria de atendimento'+(ctx.area?' na área '+ctx.area:'')+'.');
+      b.textContent=label;b.onclick=()=>{clearOpts();addMsg(label,'user');typing(()=>{addMsg(''+(ctx.nome?'Pronto, '+N()+'! ':'Pronto! ')+'O WhatsApp da Dra. Laydy foi aberto. É só enviar a mensagem por lá.','bot');renderOpts([['Voltar ao início','start']])},500)}}
     else{b=document.createElement('button');b.className='opt';b.textContent=label;b.onclick=()=>{clearOpts();addMsg(label,'user');go(key)}}
     w.appendChild(b)});body.appendChild(w);sb()}
 function toggleChat(open,topic){
   if(open)$('#agentTop').classList.add('show');
   chat.hidden=!open;teaser.hidden=true;agentBtn.classList.remove('ping');
   if(open){chat.classList.remove('open-anim');void chat.offsetWidth;chat.classList.add('open-anim');userOpened=true;
-    if(!started){started=true;go(topic&&topic!=='start'?topic:'start');return}
+    if(!started){started=true;const pill=document.createElement('div');pill.className='online-pill';pill.innerHTML='<i></i>Estamos online';body.appendChild(pill);ctx.pending=topic&&topic!=='start'?topic:'start';ctx.wantName=true;
+      typing(()=>{addMsg('Olá! Eu sou a <b>Júlia</b>, atendente virtual do escritório da Dra. Laydy Ribeiro. Antes de começar, como posso te chamar?','bot');$('#chatIn').placeholder='Digite seu nome';$('#chatIn').focus({preventScroll:true})},600);return}
+    if(ctx.wantName){ctx.pending=topic&&topic!=='start'?topic:ctx.pending;return}
     if(topic&&topic!=='start'&&K[topic]){clearOpts();addMsg('Quero tirar uma dúvida sobre '+K[topic].a,'user');go(topic)}}
 }
 agentBtn.onclick=()=>toggleChat(chat.hidden);
@@ -961,9 +973,11 @@ $('#chatClose').onclick=()=>toggleChat(false);
 $$('.js-bot').forEach(b=>b.onclick=()=>toggleChat(true,b.dataset.topic));
 $('#chatForm').onsubmit=e=>{e.preventDefault();const inp=$('#chatIn'),v=inp.value.trim();if(!v)return;inp.value='';clearOpts();
   const s=document.createElement('div');s.className='msg user';s.textContent=v;body.appendChild(s);sb();
+  if(ctx.wantName){ctx.wantName=false;ctx.nome=capName(v)||'';$('#chatIn').placeholder='Digite sua dúvida';const pk=ctx.pending||'start';ctx.pending=null;
+    if(pk!=='start'&&pk!=='calc'){ctx.greeted=true;typing(()=>{addMsg('Prazer, <b>'+N()+'</b>!','bot');go(pk)},500)}else{go(pk==='calc'?'calc':'start')}return}
   if(calc.i>=0){answerCalc(v);return}
   const hit=kw.find(([re])=>re.test(v));
-  if(hit)go(hit[1]);else typing(()=>{addMsg('Entendi. Para te orientar com segurança, o ideal é a Dra. Laydy analisar seu caso. Posso te encaminhar agora:','bot');renderOpts([['Falar com a Dra. no WhatsApp','wa'],['Preencher formulário','form'],['Ver áreas de atuação','start']])},800)};
+  if(hit)go(hit[1]);else typing(()=>{addMsg((ctx.nome?'Entendi, '+N()+'. ':'Entendi. ')+'Para te orientar com segurança, o ideal é a Dra. Laydy analisar seu caso. Posso te encaminhar agora:','bot');renderOpts([['Falar com a Dra. no WhatsApp','wa'],['Preencher formulário','form'],['Ver áreas de atuação','start']])},800)};
 
 // ---------- Cálculo trabalhista: formulário do site ----------
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1008,11 +1022,13 @@ const CALC=[
 const LABELS={nome:'Nome',adm:'Admissão',saida:'Saída',sal:'Último salário',tipo:'Tipo de saída',cart:'Carteira assinada',aviso:'Aviso prévio',ferias:'Férias vencidas',he:'Horas extras',receb:'Já recebeu a rescisão',obs:'Observações'};
 let calc={i:-1,a:{}};
 function addUser(t){const s=document.createElement('div');s.className='msg user';s.textContent=t;body.appendChild(s);sb()}
-function startCalc(){calc={i:0,a:{}};typing(()=>{addMsg('Vou te fazer algumas perguntas rápidas. Com as respostas, a Dra. Laydy faz o <b>cálculo da sua rescisão</b> e te responde pelo WhatsApp.','bot');askCalc()},600)}
-function askCalc(){const q=CALC[calc.i];typing(()=>{addMsg(esc(q.q),'bot');
+function startCalc(){calc={i:ctx.nome?1:0,a:{nome:ctx.nome},askedName:!ctx.nome};typing(()=>{addMsg((ctx.nome?'<b>'+N()+'</b>, vou':'Vou')+' te fazer algumas perguntas rápidas. Com as respostas, a Dra. Laydy faz o <b>cálculo da sua rescisão</b> e te responde pelo WhatsApp.','bot');askCalc()},600)}
+function askCalc(){const q=CALC[calc.i];const nm=calc.a.nome?capName(calc.a.nome):'';
+  let qt=esc(q.q);if(nm&&q.k==='adm'&&calc.askedName)qt='Prazer, <b>'+esc(nm)+'</b>! '+qt;else if(nm&&['sal','tipo','receb'].includes(q.k))qt='<b>'+esc(nm)+'</b>, '+qt.charAt(0).toLowerCase()+qt.slice(1);
+  typing(()=>{addMsg(qt,'bot');
   if(q.o){const w=document.createElement('div');w.className='opts';q.o.forEach(l=>{const b=document.createElement('button');b.className='opt';b.textContent=l;b.onclick=()=>{clearOpts();addUser(l);answerCalc(l)};w.appendChild(b)});body.appendChild(w);sb()}
   $('#chatIn').placeholder=q.ph||'Ou digite sua resposta'},450)}
-function answerCalc(v){calc.a[CALC[calc.i].k]=v;calc.i++;if(calc.i<CALC.length)askCalc();else finishCalc()}
+function answerCalc(v){if(CALC[calc.i].k==='nome'){ctx.nome=capName(v);ctx.greeted=true}calc.a[CALC[calc.i].k]=v;calc.i++;if(calc.i<CALC.length)askCalc();else finishCalc()}
 function finishCalc(){const a=calc.a;calc.i=-1;$('#chatIn').placeholder='Digite sua dúvida';
   const msg='*PEDIDO DE CÁLCULO TRABALHISTA (ATENDENTE DO SITE)*\n\n'+CALC.map(q=>'*'+LABELS[q.k]+':* '+(q.k==='sal'?'R$ ':'')+a[q.k]).join('\n')+'\n\nGostaria de saber quanto tenho a receber.';
   const nome=esc((a.nome||'').split(' ')[0]);
